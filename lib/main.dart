@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
 
 void main() {
   runApp(const MyApp());
@@ -8,7 +10,6 @@ void main() {
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
-
   @override
   State<MyApp> createState() => _MyAppState();
 }
@@ -16,9 +17,9 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   ThemeMode _themeMode = ThemeMode.system;
 
-  void toggleTheme(bool isDarkMode) {
+  void _toggleTheme(bool isDark) {
     setState(() {
-      _themeMode = isDarkMode ? ThemeMode.dark : ThemeMode.light;
+      _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
     });
   }
 
@@ -29,18 +30,24 @@ class _MyAppState extends State<MyApp> {
       debugShowCheckedModeBanner: false,
       themeMode: _themeMode,
       theme: ThemeData(
-        brightness: Brightness.light,
         useMaterial3: true,
+        brightness: Brightness.light,
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         textTheme: GoogleFonts.poppinsTextTheme(),
       ),
       darkTheme: ThemeData(
-        brightness: Brightness.dark,
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal, brightness: Brightness.dark),
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.teal,
+          brightness: Brightness.dark,
+        ),
         textTheme: GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme),
       ),
-      home: UserInputPage(onToggleTheme: toggleTheme, themeMode: _themeMode),
+      home: UserInputPage(
+        onToggleTheme: _toggleTheme,
+        themeMode: _themeMode,
+      ),
     );
   }
 }
@@ -49,7 +56,11 @@ class UserInputPage extends StatefulWidget {
   final void Function(bool) onToggleTheme;
   final ThemeMode themeMode;
 
-  const UserInputPage({super.key, required this.onToggleTheme, required this.themeMode});
+  const UserInputPage({
+    super.key,
+    required this.onToggleTheme,
+    required this.themeMode,
+  });
 
   @override
   State<UserInputPage> createState() => _UserInputPageState();
@@ -84,19 +95,6 @@ class _UserInputPageState extends State<UserInputPage> {
       _history.add(text);
       await prefs.setStringList('history', _history);
     }
-    _showSnackbar('Teks berhasil disimpan!');
-  }
-
-  Future<void> _reset() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('saved_text');
-    await prefs.remove('history');
-    setState(() {
-      _controller.clear();
-      _displayText = '';
-      _history.clear();
-    });
-    _showSnackbar('Data berhasil direset.');
   }
 
   void _showText() {
@@ -109,38 +107,45 @@ class _UserInputPageState extends State<UserInputPage> {
     }
   }
 
-  void _showSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(fontSize: 16)),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: Theme.of(context).colorScheme.primary,
+  Future<void> _exportToFile() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File('${directory.path}/riwayat_input.txt');
+    final content = _history.reversed.join('\n');
+    await file.writeAsString(content);
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Export Berhasil'),
+        content: Text('File disimpan di:\n${file.path}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Oke'),
+          ),
+        ],
       ),
     );
   }
 
-  void _toggleTheme(bool value) {
-    widget.onToggleTheme(value);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isDarkMode = widget.themeMode == ThemeMode.dark;
+    final isDark = widget.themeMode == ThemeMode.dark;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Input User'),
         actions: [
           Switch(
-            value: isDarkMode,
-            onChanged: _toggleTheme,
+            value: isDark,
+            onChanged: widget.onToggleTheme,
             activeColor: Colors.amber,
             inactiveThumbColor: Colors.grey,
           ),
           IconButton(
-            onPressed: _reset,
-            icon: const Icon(Icons.delete_forever),
-            tooltip: 'Reset Semua',
+            icon: const Icon(Icons.file_download),
+            onPressed: _exportToFile,
+            tooltip: 'Export Riwayat',
           ),
         ],
       ),
@@ -153,7 +158,7 @@ class _UserInputPageState extends State<UserInputPage> {
               decoration: InputDecoration(
                 labelText: 'Masukkan Teks',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                prefixIcon: const Icon(Icons.edit_note),
+                prefixIcon: const Icon(Icons.edit),
               ),
             ),
             const SizedBox(height: 20),
@@ -169,15 +174,12 @@ class _UserInputPageState extends State<UserInputPage> {
             const SizedBox(height: 30),
             if (_displayText.isNotEmpty)
               Card(
-                elevation: 3,
                 color: Theme.of(context).colorScheme.surfaceVariant,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 3,
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    'Teks: $_displayText',
-                    style: const TextStyle(fontSize: 18),
-                  ),
+                  child: Text('Teks: $_displayText', style: const TextStyle(fontSize: 18)),
                 ),
               ),
             const SizedBox(height: 30),
@@ -187,11 +189,13 @@ class _UserInputPageState extends State<UserInputPage> {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 10),
-              ..._history.reversed.map((text) => ListTile(
-                    leading: const Icon(Icons.history),
-                    title: Text(text),
-                  )),
-            ]
+              ..._history.reversed.map(
+                (text) => ListTile(
+                  leading: const Icon(Icons.history),
+                  title: Text(text),
+                ),
+              ),
+            ],
           ],
         ),
       ),
